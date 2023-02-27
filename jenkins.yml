@@ -1,0 +1,117 @@
+---
+- hosts: all
+  become: true
+  name: setup jenkins
+  vars:
+    username: sammy
+  tasks:
+  # - name: install default-jre
+  #   apt:
+  #     name: default-jdk
+  #     state: latest
+  #     update_cache: true
+  # - name: copy file Oracle JDK file to server
+  #   copy:
+  #     src: /Users/tientuu/Downloads/Source/jdk-11.0.17_linux-x64_bin.tar.gz
+  #     dest: ~/
+  # - name: install software-properties-common
+  #   apt:
+  #     name: software-properties-common
+  #     state: latest
+  #     update_cache: true
+  # - name: import the signing key used to verify the software
+  #   shell: sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys EA8CACC073C3DB2A
+  # - name: Add Java PPA
+  #   apt_repository:
+  #     repo: ppa:linuxuprising/java
+  # - name: update apt
+  #   shell: sudo apt update 
+  # - name: Create this directory and move the Oracle JDK archive there
+  #   shell: |
+  #     sudo mkdir -p /var/cache/oracle-jdk11-installer-local/
+  #     sudo cp ~/jdk-11.0.17_linux-x64_bin.tar.gz /var/cache/oracle-jdk11-installer-local/
+
+    # sudo apt install oracle-java11-installer-local // chạy cái này riêng vì nó cần accept
+  - name: Set JAVA_HOME
+    lineinfile:
+      dest: /etc/environment
+      state: present
+      regexp: '^JAVA_HOME'
+      line: 'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
+  - name: source variable reload
+    shell: . /etc/environment
+  - name: Add Jenkins GPG key
+    shell: |
+      wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
+  - name: append the Debian package repository address to the server’s sources.list
+    shell: sudo sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+  - name: Cập nhật danh sách gói
+    apt:
+      update_cache: yes
+
+  - name: Cài đặt Jenkins
+    apt:
+      name: jenkins
+      state: present
+
+  - name: Khởi động dịch vụ Jenkins
+    service:
+      name: jenkins
+      state: started
+  - name: Open firewall
+    shell: sudo ufw allow 8080
+
+    # sudo cat /var/lib/jenkins/secrets/initialAdminPassword <--- get password login jenkins,
+    # install docker and setup docker in jenkins
+  - name: install docker
+    apt:
+      name:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - software-properties-common
+      state: present
+  - name: Add Docker GPG key
+    shell: "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -"
+  - name: Add Docker APT repository
+    apt_repository:
+      repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+      state: present
+      update_cache: true
+  - name: Check Docker version
+    shell: "apt-cache policy docker-ce"
+  - name: Install Docker CE
+    apt:
+      name: docker-ce
+      state: present
+      update_cache: true
+
+  # config docker in jenkins
+  - name: Update Docker service configuration
+    lineinfile:
+      path: /lib/systemd/system/docker.service
+      regexp: "^ExecStart=/usr/bin"
+      line: "ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:4243 -H unix:///var/run/docker.sock"
+  - name: Reload systemd daemon
+    become: true
+    systemd:
+      daemon_reload: yes
+  - name: Restart Docker service
+    become: true
+    service:
+      name: docker
+      state: restarted
+  - name: Add docker group
+    become: true
+    group:
+      name: docker
+      state: present
+  - name: Add jenkins user to docker group
+    become: true
+    user:
+      name: jenkins
+      groups: docker
+      append: yes
+
+
+
